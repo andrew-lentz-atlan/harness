@@ -25,6 +25,7 @@ async def chat(req: ChatRequest):
     cfg = load_config()
     loop_cfg = loop_config_from(cfg)
     backend = cfg.get("backend", "litellm")
+    model_name = (cfg.get("model") or {}).get("name") or None
     session = app_state.get_or_create(req.session_id)
     session.reset_with_system(loop_cfg.system_prompt)
 
@@ -33,7 +34,7 @@ async def chat(req: ChatRequest):
         yield {"event": "session", "data": json.dumps({"session_id": session.id})}
 
         try:
-            client = app_state.client_for(backend)
+            client = app_state.client_for(backend, model=model_name)
         except (ValueError, RuntimeError) as exc:
             yield {
                 "event": "error",

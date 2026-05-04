@@ -78,29 +78,32 @@ def loop_config_from(cfg: dict[str, Any]) -> LoopConfig:
 class AppState:
     """Process-wide singletons: sessions, tool registry, model client.
 
-    The model client is lazily reconstructed when the configured backend
-    changes — that way the user can flip the backend dropdown in the
-    sidebar mid-session without restarting the server.
+    The model client is lazily reconstructed when either the configured
+    backend OR the model name changes — that way the user can flip
+    either dropdown in the sidebar mid-session without restarting the
+    server.
     """
 
     def __init__(self) -> None:
         self.sessions: dict[str, Session] = {}
         self.registry = default_registry
         self._client: ModelClient | None = None
-        self._client_backend: str | None = None
+        self._client_key: tuple[str, str | None] | None = None
 
-    def client_for(self, backend: str) -> ModelClient:
-        """Return the cached client if it matches `backend`, otherwise
-        rebuild. Avoids constructing a new HTTP client on every request,
-        and avoids holding a stale client when the user switches backend.
-        """
+    def client_for(self, backend: str, model: str | None = None) -> ModelClient:
+        """Return a client matching (backend, model). Rebuilds when
+        either changes, otherwise returns the cached one."""
         if backend not in AVAILABLE_BACKENDS:
             raise ValueError(
                 f"Unknown backend {backend!r}. Available: {AVAILABLE_BACKENDS}."
             )
-        if self._client is None or self._client_backend != backend:
-            self._client = make_client(backend)
-            self._client_backend = backend
+        key = (backend, model)
+        if self._client is None or self._client_key != key:
+            kwargs: dict[str, Any] = {}
+            if model:
+                kwargs["model"] = model
+            self._client = make_client(backend, **kwargs)
+            self._client_key = key
         return self._client
 
     def get_or_create(self, session_id: str | None) -> Session:

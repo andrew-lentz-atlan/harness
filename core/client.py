@@ -69,6 +69,12 @@ class ModelClient(ABC):
 class _OpenAICompatClient(ModelClient):
     """Shared logic for any OpenAI-compatible chat-completions endpoint."""
 
+    # Subclasses can declare payload keys that this backend's downstream
+    # provider doesn't accept. They get stripped before the POST. Used to
+    # paper over cross-provider quirks (e.g. Bedrock's Claude routes
+    # reject top_p when temperature is also set).
+    excluded_payload_keys: tuple[str, ...] = ()
+
     def __init__(
         self,
         *,
@@ -102,6 +108,8 @@ class _OpenAICompatClient(ModelClient):
         if tools:
             payload["tools"] = tools
             payload["tool_choice"] = "auto"
+        for key in self.excluded_payload_keys:
+            payload.pop(key, None)
 
         t0 = time.monotonic()
         resp = await self._http.post(
@@ -110,7 +118,18 @@ class _OpenAICompatClient(ModelClient):
             headers=self._headers,
         )
         latency_ms = int((time.monotonic() - t0) * 1000)
-        resp.raise_for_status()
+
+        # Surface the response body on errors so 400s from the proxy
+        # name the actual problem field instead of just "Bad Request".
+        if resp.status_code >= 400:
+            body = resp.text[:2000] if resp.text else "(empty body)"
+            raise httpx.HTTPStatusError(
+                f"HTTP {resp.status_code} from {self.base_url}\n"
+                f"Response body: {body}\n"
+                f"Request payload (truncated): {str(payload)[:500]}",
+                request=resp.request,
+                response=resp,
+            )
         data = resp.json()
 
         choice = data["choices"][0]["message"]
@@ -173,7 +192,17 @@ class LiteLLMClient(_OpenAICompatClient):
         LITELLM_BASE_URL    proxy URL (REQUIRED)
         LITELLM_API_KEY     auth key (REQUIRED) — sent as `Bearer <key>`
         MODEL_NAME          default: claude-haiku-4-5
+
+    Why we strip top_p:
+        Atlan's LiteLLM proxy routes Claude models through Bedrock, and
+        Bedrock's Claude implementation rejects requests that set both
+        `temperature` and `top_p` ("cannot both be specified for this
+        model"). Anthropic's native API accepts both; the translation
+        layer doesn't. We default to keeping `temperature` and dropping
+        `top_p`. If a future model needs top_p instead, override this
+        list per-instance or refactor to a model-aware policy.
     """
+    excluded_payload_keys = ("top_p",)
 
     def __init__(
         self,
