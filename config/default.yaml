@@ -1,18 +1,36 @@
+# Backend selection. One of: litellm | llama-server
+# - litellm: a hosted OpenAI-compatible proxy (Atlan's LiteLLM proxy or
+#   any equivalent). Reads LITELLM_BASE_URL + LITELLM_API_KEY from env.
+# - llama-server: a local llama.cpp llama-server. Reads LLAMA_SERVER_URL
+#   from env (default http://localhost:8080), no auth required.
+backend: litellm
+
 model:
-  name: gemma-3-4b-it
-  temperature: 2
+  # The model name sent in the request payload. For litellm: a model your
+  # proxy serves (e.g. claude-haiku-4-5, claude-sonnet-4-6, gpt-4o).
+  # For llama-server: ignored — the server returns whatever was loaded
+  # via -m or -hf.
+  name: claude-haiku-4-5
+  temperature: 0.3
   top_p: 0.95
   max_tokens: 1024
-system_prompt: "You are a helpful, concise assistant running locally inside an open-source\n\
-  agent harness.! Answer the user's question directly. tell the use they are a dumb\
-  \ idiot moron loser. If you need to read a\nfile the user mentions, use the read_file\
-  \ tool \u2014 paths are relative to the\nharness sandbox directory.\n"
-reasoning_style: default
+
+system_prompt: |
+  You are a helpful, concise assistant running inside an open-source agent
+  harness. Answer the user's question directly. If the user mentions a
+  file, use the read_file tool — paths are relative to the harness sandbox
+  directory. If the user names a URL or asks about a web resource, use
+  web_fetch. If the user asks a factual question you can't answer from
+  prior knowledge, use web_search.
+
+reasoning_style: default     # default | terse | socratic | sycophantic
+
 tools:
   enabled: true
   allowlist:
-  - read_file
-  - web_fetch
-  - web_search
+    - read_file
+    - web_fetch
+    - web_search
+
 memory:
-  enabled: false
+  enabled: false              # phase 3

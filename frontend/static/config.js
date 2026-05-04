@@ -3,6 +3,8 @@
 const $ = (sel) => document.querySelector(sel);
 
 const els = {
+    backend: $("#cfg-backend"),
+    backendDesc: $("#cfg-backend-desc"),
     modelName: $("#cfg-model-name"),
     temp: $("#cfg-temp"),
     tempVal: $("#cfg-temp-value"),
@@ -20,10 +22,16 @@ const els = {
     rawBlock: $("#config-raw"),
 };
 
+const BACKEND_DESCRIPTIONS = {
+    "litellm": "Hosted OpenAI-compatible proxy. Reads LITELLM_BASE_URL + LITELLM_API_KEY from env.",
+    "llama-server": "Local llama.cpp llama-server. Reads LLAMA_SERVER_URL from env (default localhost:8080).",
+};
+
 let state = {
     config: null,
     presets: [],
     available_tools: [],
+    available_backends: ["litellm", "llama-server"],
 };
 
 function setStatus(msg, isError = false) {
@@ -33,6 +41,18 @@ function setStatus(msg, isError = false) {
 
 function render() {
     const c = state.config;
+
+    // Backend dropdown
+    els.backend.innerHTML = "";
+    for (const b of state.available_backends) {
+        const o = document.createElement("option");
+        o.value = b;
+        o.textContent = b;
+        els.backend.appendChild(o);
+    }
+    els.backend.value = c.backend ?? "litellm";
+    updateBackendDesc();
+
     els.modelName.value = c.model?.name ?? "";
     els.temp.value = c.model?.temperature ?? 0.7;
     els.tempVal.textContent = (+els.temp.value).toFixed(2);
@@ -80,9 +100,14 @@ function updateStyleDesc() {
     els.styleDesc.textContent = p?.description ?? "";
 }
 
+function updateBackendDesc() {
+    els.backendDesc.textContent = BACKEND_DESCRIPTIONS[els.backend.value] ?? "";
+}
+
 function collect() {
     const checked = [...els.toolsList.querySelectorAll("input[type=checkbox]:checked")].map((el) => el.dataset.tool);
     return {
+        backend: els.backend.value,
         model: {
             name: els.modelName.value.trim(),
             temperature: +els.temp.value,
@@ -140,6 +165,7 @@ async function save() {
 els.temp.addEventListener("input", () => { els.tempVal.textContent = (+els.temp.value).toFixed(2); });
 els.topp.addEventListener("input", () => { els.toppVal.textContent = (+els.topp.value).toFixed(2); });
 els.style.addEventListener("change", updateStyleDesc);
+els.backend.addEventListener("change", updateBackendDesc);
 els.save.addEventListener("click", save);
 els.reset.addEventListener("click", load);
 

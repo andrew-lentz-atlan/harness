@@ -2,33 +2,53 @@
 
 A minimal LLM agent harness, built from scratch to learn what goes inside one.
 
-The "brain" is a local model running under [`llama-server`](https://github.com/ggml-org/llama.cpp/tree/master/tools/server) (llama.cpp's OpenAI-compatible HTTP server). The harness is a thin Python layer that runs the agent loop, exposes a chat UI, and lets you tweak its behavior live.
+The "brain" can be either a local model (via [`llama-server`](https://github.com/ggml-org/llama.cpp/tree/master/tools/server) — llama.cpp's OpenAI-compatible HTTP server) or any hosted OpenAI-compatible proxy (Atlan's LiteLLM proxy, etc.). Pick the backend in the sidebar; switch any time.
 
 ## What's here
 
-- A canonical agent loop (`core/loop.py`) — you can read it in one sitting
-- An OpenAI-shaped HTTP client to `llama-server` (`core/client.py`) — no SDK, the wire format stays visible
+- A canonical agent loop ([`core/loop.py`](core/loop.py)) — you can read it in one sitting
+- A `ModelClient` interface ([`core/client.py`](core/client.py)) with two backends:
+  - `LlamaServerClient` — local llama.cpp, no auth
+  - `LiteLLMClient` — hosted OpenAI-compatible proxy, Bearer auth
 - Three sandboxed tools (`core/tools/`):
   - `read_file` — reads from a sandboxed directory
   - `web_fetch` — fetches a URL with SSRF + injection guards
   - `web_search` — DuckDuckGo search
-- A web UI with: chat panel, sidebar config (system prompt, temperature, reasoning-style preset, tool allowlist), and a **Trace tab** that shows every message the model sees
+- A web UI: chat panel, sidebar config (backend, system prompt, model params, reasoning-style preset, tool allowlist), and a **Trace tab** that shows every message the model sees
 - File-backed config (`config/default.yaml`) — no DB, no migrations
 - 32 unit tests covering the loop, the tools, and their guardrails
 
 ## Run it
 
-```bash
-# 1. Start a llama-server somewhere with a Gemma (or compatible) model
-llama-server -hf unsloth/gemma-4-E4B-it-GGUF:Q4_K_M -c 8192 --jinja --port 8080
+### Option A — hosted proxy (default)
 
-# 2. From this directory
-cp .env.example .env       # point at the llama-server
+If you have an OpenAI-compatible proxy (e.g. Atlan's LiteLLM proxy):
+
+```bash
+cp .env.example .env       # fill in LITELLM_BASE_URL + LITELLM_API_KEY
 uv sync                    # install deps
 ./run.sh                   # serves http://localhost:8006
 ```
 
-Then open http://localhost:8006.
+The default config uses `claude-haiku-4-5`; change `model.name` in the sidebar to anything your proxy serves.
+
+### Option B — local llama-server
+
+If you'd rather run the model on your own laptop:
+
+```bash
+# In one terminal, start the model server:
+llama-server -hf unsloth/gemma-4-E4B-it-GGUF:Q4_K_M -c 8192 --jinja --port 8080
+
+# In another:
+cp .env.example .env       # LLAMA_SERVER_URL is preconfigured
+uv sync
+./run.sh
+```
+
+Then in the sidebar, switch **Backend** from `litellm` to `llama-server` and Save.
+
+Open http://localhost:8006.
 
 ## Why these choices
 
@@ -39,17 +59,15 @@ This is a learning project. Every piece is chosen to be readable, not production
 - **No DB** — YAML for config, JSON for sessions. `cat` works.
 - **Sandboxed tools** — `read_file` is locked to `./sandbox/`; `web_fetch` rejects loopback, private, and AWS-metadata IPs. Standard guardrails, written explicitly.
 - **Full trace visibility** — the Trace tab shows every request and response byte the model sees. The OOTB harnesses (Claude Code, Cursor) summarize traces because their cost incentives don't reward full visibility. This one's incentives are different.
+- **Backend swap, not lock-in** — same `ModelClient` interface, two implementations. Same code path runs against a local Gemma or a hosted Claude. Pick per task.
 
-## Status / Roadmap
+## Roadmap
 
-**Currently:** llama-server backend only. To run it, you need a local model running.
-
-**Imminent next step:** Hosted-model backend support via LiteLLM proxy (so you can point this at a managed `claude-haiku-4-5`, `gpt-4o`, etc. without a local model). The plan is to refactor `core/client.py` into a `ModelClient` interface with two implementations — `LlamaServerClient` and `LiteLLMClient` — and add a `backend` field to the config. This is what makes the harness usable by anyone with proxy creds, not just folks with `llama-server` running locally.
-
-**Beyond that:**
-- More tools (`write_file`, `bash`, custom tool hot-reload)
-- Memory: short-term compaction + persistent memory (Claude Code-style markdown files)
-- Module swap UI (multiple reasoners, memory backends, plug-in tools)
+- [x] **Phase 1** — chat loop, tools, trace UI
+- [x] **Phase 2** — more tools (web_fetch, web_search), guardrails, tests
+- [x] **Phase 2c** — LiteLLM backend (this commit) — usable with hosted models, no local install required
+- [ ] **Phase 3** — short-term context compaction + persistent memory (Claude Code-style markdown files)
+- [ ] **Phase 4** — module swap UI (multiple reasoners, memory backends, plug-in tools), per-stage backend selection (cheap model for simple steps, frontier model for hard ones)
 
 ## Used by
 

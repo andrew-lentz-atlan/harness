@@ -20,7 +20,7 @@ import json
 from dataclasses import dataclass, field
 from typing import AsyncIterator
 
-from core.client import LlamaClient, ModelParams
+from core.client import ModelClient, ModelParams
 from core.messages import (
     AssistantMessage,
     Message,
@@ -64,7 +64,7 @@ async def run_loop(
     session: Session,
     user_message: str,
     config: LoopConfig,
-    client: LlamaClient,
+    client: ModelClient,
     registry: ToolRegistry,
 ) -> AsyncIterator[LoopEvent]:
     """Run the agent loop, yielding events as the model thinks."""

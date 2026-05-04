@@ -7,7 +7,12 @@ from typing import Any
 
 import yaml
 
-from core.client import LlamaClient, ModelParams
+from core.client import (
+    AVAILABLE_BACKENDS,
+    ModelClient,
+    ModelParams,
+    make_client,
+)
 from core.loop import LoopConfig, Session
 from core.tools.registry import default_registry
 
@@ -71,10 +76,32 @@ def loop_config_from(cfg: dict[str, Any]) -> LoopConfig:
 
 
 class AppState:
+    """Process-wide singletons: sessions, tool registry, model client.
+
+    The model client is lazily reconstructed when the configured backend
+    changes — that way the user can flip the backend dropdown in the
+    sidebar mid-session without restarting the server.
+    """
+
     def __init__(self) -> None:
         self.sessions: dict[str, Session] = {}
         self.registry = default_registry
-        self.client = LlamaClient()
+        self._client: ModelClient | None = None
+        self._client_backend: str | None = None
+
+    def client_for(self, backend: str) -> ModelClient:
+        """Return the cached client if it matches `backend`, otherwise
+        rebuild. Avoids constructing a new HTTP client on every request,
+        and avoids holding a stale client when the user switches backend.
+        """
+        if backend not in AVAILABLE_BACKENDS:
+            raise ValueError(
+                f"Unknown backend {backend!r}. Available: {AVAILABLE_BACKENDS}."
+            )
+        if self._client is None or self._client_backend != backend:
+            self._client = make_client(backend)
+            self._client_backend = backend
+        return self._client
 
     def get_or_create(self, session_id: str | None) -> Session:
         if session_id and session_id in self.sessions:
